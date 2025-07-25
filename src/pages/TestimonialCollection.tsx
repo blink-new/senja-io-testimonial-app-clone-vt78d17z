@@ -1,18 +1,25 @@
 import React, { useState, useEffect } from 'react'
 import { blink } from '../blink/client'
-import { Plus, Copy, ExternalLink } from 'lucide-react'
+import { Plus, Copy, ExternalLink, Edit, Settings } from 'lucide-react'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
+import FormBuilder from '../components/FormBuilder'
 
 export default function TestimonialCollection() {
   const [user, setUser] = useState<any>(null)
   const [forms, setForms] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showFormBuilder, setShowFormBuilder] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    allow_video: true,
-    require_approval: true
+    settings: {
+      allow_video: true,
+      require_approval: true,
+      brand_color: '#4F46E5',
+      company_name: '',
+      company_logo: ''
+    }
   })
 
   const loadForms = async (userId: string) => {
@@ -51,12 +58,8 @@ export default function TestimonialCollection() {
         title: formData.title,
         description: formData.description,
         questions: JSON.stringify([]),
-        allow_video: formData.allow_video ? "1" : "0",
-        require_approval: formData.require_approval ? "1" : "0",
-        brand_color: '#4F46E5',
-        company_name: '',
-        company_logo: '',
-        is_active: "1",
+        settings: JSON.stringify(formData.settings),
+        is_active: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -65,13 +68,18 @@ export default function TestimonialCollection() {
       setFormData({
         title: '',
         description: '',
-        allow_video: true,
-        require_approval: true
+        settings: {
+          allow_video: true,
+          require_approval: true,
+          brand_color: '#4F46E5',
+          company_name: '',
+          company_logo: ''
+        }
       })
       loadForms(user.id)
     } catch (error) {
       console.error('Error creating form:', error)
-      alert('Error creating form')
+      alert('Error creating form. Please try again.')
     }
   }
 
@@ -141,8 +149,11 @@ export default function TestimonialCollection() {
                   <label className="flex items-center">
                     <input
                       type="checkbox"
-                      checked={formData.allow_video}
-                      onChange={(e) => setFormData({ ...formData, allow_video: e.target.checked })}
+                      checked={formData.settings.allow_video}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        settings: { ...formData.settings, allow_video: e.target.checked }
+                      })}
                       className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-sm text-gray-700">Allow video testimonials</span>
@@ -150,8 +161,11 @@ export default function TestimonialCollection() {
                   <label className="flex items-center">
                     <input
                       type="checkbox"
-                      checked={formData.require_approval}
-                      onChange={(e) => setFormData({ ...formData, require_approval: e.target.checked })}
+                      checked={formData.settings.require_approval}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        settings: { ...formData.settings, require_approval: e.target.checked }
+                      })}
                       className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-sm text-gray-700">Require approval before publishing</span>
@@ -193,6 +207,13 @@ export default function TestimonialCollection() {
                 </span>
                 <div className="flex space-x-2">
                   <button
+                    onClick={() => setShowFormBuilder(form.id)}
+                    className="p-2 text-gray-500 hover:text-gray-700"
+                    title="Edit form fields"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => copyFormLink(form.id)}
                     className="p-2 text-gray-500 hover:text-gray-700"
                     title="Copy link"
@@ -213,6 +234,18 @@ export default function TestimonialCollection() {
             </div>
           ))}
         </div>
+
+        {/* Form Builder Modal */}
+        {showFormBuilder && (
+          <FormBuilder
+            formId={showFormBuilder}
+            onClose={() => setShowFormBuilder(null)}
+            onSave={() => {
+              // Refresh forms list if needed
+              if (user) loadForms(user.id)
+            }}
+          />
+        )}
 
         {forms.length === 0 && (
           <div className="text-center py-12">

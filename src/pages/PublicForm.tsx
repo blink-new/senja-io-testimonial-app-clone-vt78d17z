@@ -4,26 +4,32 @@ import { blink } from '../blink/client'
 import { Star, Send, Upload, Video } from 'lucide-react'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 
+interface FormField {
+  id: string
+  field_type: string
+  label: string
+  placeholder: string
+  required: boolean
+  options: string[]
+  order_index: number
+}
+
 interface FormSettings {
   id: string
   user_id: string
   title: string
   description: string
-  questions: string[]
-  allow_video: boolean
-  require_approval: boolean
-  brand_color: string
-  company_name: string
-  company_logo: string
+  settings: any
 }
 
 export default function PublicForm() {
   const { formId } = useParams<{ formId: string }>()
   const [formSettings, setFormSettings] = useState<FormSettings | null>(null)
+  const [formFields, setFormFields] = useState<FormField[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Record<string, any>>({
     name: '',
     email: '',
     company: '',
@@ -36,8 +42,9 @@ export default function PublicForm() {
   useEffect(() => {
     if (!formId) return
 
-    const loadFormSettings = async () => {
+    const loadFormData = async () => {
       try {
+        // Load form settings
         const forms = await blink.db.testimonial_forms.list({
           where: { id: formId },
           limit: 1
@@ -47,17 +54,30 @@ export default function PublicForm() {
           const form = forms[0]
           setFormSettings({
             ...form,
-            questions: form.questions ? JSON.parse(form.questions) : []
+            settings: form.settings ? JSON.parse(form.settings) : {}
           })
         }
+
+        // Load custom fields
+        const fields = await blink.db.form_fields.list({
+          where: { form_id: formId },
+          orderBy: { order_index: 'asc' }
+        })
+
+        setFormFields(fields.map(field => ({
+          ...field,
+          required: Number(field.required) > 0,
+          options: field.options ? JSON.parse(field.options) : []
+        })))
+
       } catch (error) {
-        console.error('Error loading form settings:', error)
+        console.error('Error loading form data:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    loadFormSettings()
+    loadFormData()
   }, [formId])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,6 +86,14 @@ export default function PublicForm() {
 
     setSubmitting(true)
     try {
+      // Prepare custom fields data
+      const customFieldsData: Record<string, any> = {}
+      formFields.forEach(field => {
+        if (formData[field.id] !== undefined) {
+          customFieldsData[field.id] = formData[field.id]
+        }
+      })
+
       await blink.db.testimonials.create({
         id: `testimonial_${Date.now()}`,
         user_id: formSettings.user_id,
@@ -77,7 +105,8 @@ export default function PublicForm() {
         content: formData.content,
         video_url: formData.video_url,
         image_url: formData.image_url,
-        status: formSettings.require_approval ? 'pending' : 'approved',
+        custom_fields: JSON.stringify(customFieldsData),
+        status: formSettings.settings?.require_approval ? 'pending' : 'approved',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -107,6 +136,131 @@ export default function PublicForm() {
     } catch (error) {
       console.error('Error uploading file:', error)
       alert('Error uploading file. Please try again.')
+    }
+  }
+
+  const renderCustomField = (field: FormField) => {
+    const value = formData[field.id] || ''
+    
+    const updateFieldValue = (newValue: any) => {
+      setFormData({ ...formData, [field.id]: newValue })
+    }
+
+    switch (field.field_type) {
+      case 'text':
+      case 'email':
+        return (
+          <div key={field.id}>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {field.label} {field.required && '*'}
+            </label>
+            <input
+              type={field.field_type}
+              required={field.required}
+              value={value}
+              onChange={(e) => updateFieldValue(e.target.value)}
+              placeholder={field.placeholder}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        )
+
+      case 'textarea':
+        return (
+          <div key={field.id}>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {field.label} {field.required && '*'}
+            </label>
+            <textarea
+              required={field.required}
+              value={value}
+              onChange={(e) => updateFieldValue(e.target.value)}
+              placeholder={field.placeholder}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        )
+
+      case 'select':
+        return (
+          <div key={field.id}>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {field.label} {field.required && '*'}
+            </label>
+            <select
+              required={field.required}
+              value={value}
+              onChange={(e) => updateFieldValue(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">{field.placeholder || 'Select an option'}</option>
+              {field.options.map((option, index) => (
+                <option key={index} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        )
+
+      case 'checkbox':
+        return (
+          <div key={field.id}>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {field.label} {field.required && '*'}
+            </label>
+            <div className="space-y-2">
+              {field.options.map((option, index) => (
+                <label key={index} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={Array.isArray(value) ? value.includes(option) : false}
+                    onChange={(e) => {
+                      const currentValues = Array.isArray(value) ? value : []
+                      if (e.target.checked) {
+                        updateFieldValue([...currentValues, option])
+                      } else {
+                        updateFieldValue(currentValues.filter(v => v !== option))
+                      }
+                    }}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )
+
+      case 'rating':
+        return (
+          <div key={field.id}>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {field.label} {field.required && '*'}
+            </label>
+            <div className="flex items-center space-x-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => updateFieldValue(star)}
+                  className={`p-1 ${
+                    star <= (value || 0) ? 'text-yellow-400' : 'text-gray-300'
+                  }`}
+                >
+                  <Star className="h-6 w-6 fill-current" />
+                </button>
+              ))}
+              <span className="ml-2 text-sm text-gray-600">
+                {value || 0} star{value !== 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+        )
+
+      default:
+        return null
     }
   }
 
@@ -141,7 +295,7 @@ export default function PublicForm() {
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Thank You!</h1>
           <p className="text-gray-600 mb-6">
             Your testimonial has been submitted successfully. 
-            {formSettings.require_approval && ' It will be reviewed before being published.'}
+            {formSettings.settings?.require_approval && ' It will be reviewed before being published.'}
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -160,10 +314,10 @@ export default function PublicForm() {
         <div className="bg-white rounded-lg shadow">
           {/* Header */}
           <div className="px-6 py-8 border-b border-gray-200 text-center">
-            {formSettings.company_logo && (
+            {formSettings.settings?.company_logo && (
               <img
-                src={formSettings.company_logo}
-                alt={formSettings.company_name}
+                src={formSettings.settings.company_logo}
+                alt={formSettings.settings.company_name}
                 className="h-12 mx-auto mb-4"
               />
             )}
@@ -177,7 +331,7 @@ export default function PublicForm() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* Basic Info */}
+            {/* Default Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -217,10 +371,10 @@ export default function PublicForm() {
               />
             </div>
 
-            {/* Rating */}
+            {/* Default Rating */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Rating *
+                Overall Rating *
               </label>
               <div className="flex items-center space-x-1">
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -241,7 +395,10 @@ export default function PublicForm() {
               </div>
             </div>
 
-            {/* Testimonial Content */}
+            {/* Custom Fields */}
+            {formFields.map(field => renderCustomField(field))}
+
+            {/* Default Testimonial Content */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Your Testimonial *
@@ -286,7 +443,7 @@ export default function PublicForm() {
                 </div>
               </div>
 
-              {formSettings.allow_video && (
+              {formSettings.settings?.allow_video && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Upload Video (Optional)
@@ -322,7 +479,7 @@ export default function PublicForm() {
               <button
                 type="submit"
                 disabled={submitting}
-                style={{ backgroundColor: formSettings.brand_color }}
+                style={{ backgroundColor: formSettings.settings?.brand_color || '#4F46E5' }}
                 className="flex items-center px-8 py-3 text-white rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50"
               >
                 {submitting ? (
