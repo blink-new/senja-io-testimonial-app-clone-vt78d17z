@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { blink } from '../blink/client'
-import { Star, Send, Upload, Video } from 'lucide-react'
+import { Star, Send, Upload, Video, AlertCircle } from 'lucide-react'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 
 interface FormField {
@@ -29,6 +29,7 @@ export default function PublicForm() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<Record<string, any>>({
     name: '',
     email: '',
@@ -44,19 +45,25 @@ export default function PublicForm() {
 
     const loadFormData = async () => {
       try {
+        setError(null)
+        
         // Load form settings
         const forms = await blink.db.testimonial_forms.list({
           where: { id: formId },
           limit: 1
         })
 
-        if (forms.length > 0) {
-          const form = forms[0]
-          setFormSettings({
-            ...form,
-            settings: form.settings ? JSON.parse(form.settings) : {}
-          })
+        if (forms.length === 0) {
+          setError('Form not found')
+          setLoading(false)
+          return
         }
+
+        const form = forms[0]
+        setFormSettings({
+          ...form,
+          settings: form.settings ? JSON.parse(form.settings) : {}
+        })
 
         // Load custom fields
         const fields = await blink.db.form_fields.list({
@@ -72,6 +79,7 @@ export default function PublicForm() {
 
       } catch (error) {
         console.error('Error loading form data:', error)
+        setError('Failed to load form. Please try again.')
       } finally {
         setLoading(false)
       }
@@ -80,9 +88,44 @@ export default function PublicForm() {
     loadFormData()
   }, [formId])
 
+  const validateForm = () => {
+    // Check required default fields
+    if (!formData.name.trim()) {
+      setError('Name is required')
+      return false
+    }
+    if (!formData.email.trim()) {
+      setError('Email is required')
+      return false
+    }
+    if (!formData.content.trim()) {
+      setError('Testimonial content is required')
+      return false
+    }
+
+    // Check required custom fields
+    for (const field of formFields) {
+      if (field.required) {
+        const value = formData[field.id]
+        if (!value || (Array.isArray(value) && value.length === 0) || value.toString().trim() === '') {
+          setError(`${field.label} is required`)
+          return false
+        }
+      }
+    }
+
+    return true
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formSettings) return
+
+    setError(null)
+    
+    if (!validateForm()) {
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -94,27 +137,31 @@ export default function PublicForm() {
         }
       })
 
-      await blink.db.testimonials.create({
-        id: `testimonial_${Date.now()}`,
+      const testimonialData = {
+        id: `testimonial_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         user_id: formSettings.user_id,
         form_id: formId!,
-        name: formData.name,
-        email: formData.email,
-        company: formData.company,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        company: formData.company?.trim() || '',
         rating: formData.rating.toString(),
-        content: formData.content,
-        video_url: formData.video_url,
-        image_url: formData.image_url,
+        content: formData.content.trim(),
+        video_url: formData.video_url || '',
+        image_url: formData.image_url || '',
         custom_fields: JSON.stringify(customFieldsData),
         status: formSettings.settings?.require_approval ? 'pending' : 'approved',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      })
+      }
+
+      console.log('Submitting testimonial:', testimonialData)
+
+      await blink.db.testimonials.create(testimonialData)
 
       setSubmitted(true)
     } catch (error) {
       console.error('Error submitting testimonial:', error)
-      alert('Error submitting testimonial. Please try again.')
+      setError('Failed to submit testimonial. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -122,6 +169,7 @@ export default function PublicForm() {
 
   const handleFileUpload = async (file: File, type: 'image' | 'video') => {
     try {
+      setError(null)
       const { publicUrl } = await blink.storage.upload(
         file,
         `testimonials/${type}s/${Date.now()}_${file.name}`,
@@ -135,7 +183,7 @@ export default function PublicForm() {
       }
     } catch (error) {
       console.error('Error uploading file:', error)
-      alert('Error uploading file. Please try again.')
+      setError('Failed to upload file. Please try again.')
     }
   }
 
@@ -152,7 +200,7 @@ export default function PublicForm() {
         return (
           <div key={field.id}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {field.label} {field.required && '*'}
+              {field.label} {field.required && <span className="text-red-500">*</span>}
             </label>
             <input
               type={field.field_type}
@@ -169,7 +217,7 @@ export default function PublicForm() {
         return (
           <div key={field.id}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {field.label} {field.required && '*'}
+              {field.label} {field.required && <span className="text-red-500">*</span>}
             </label>
             <textarea
               required={field.required}
@@ -186,7 +234,7 @@ export default function PublicForm() {
         return (
           <div key={field.id}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {field.label} {field.required && '*'}
+              {field.label} {field.required && <span className="text-red-500">*</span>}
             </label>
             <select
               required={field.required}
@@ -208,7 +256,7 @@ export default function PublicForm() {
         return (
           <div key={field.id}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {field.label} {field.required && '*'}
+              {field.label} {field.required && <span className="text-red-500">*</span>}
             </label>
             <div className="space-y-2">
               {field.options.map((option, index) => (
@@ -237,7 +285,7 @@ export default function PublicForm() {
         return (
           <div key={field.id}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {field.label} {field.required && '*'}
+              {field.label} {field.required && <span className="text-red-500">*</span>}
             </label>
             <div className="flex items-center space-x-1">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -329,13 +377,25 @@ export default function PublicForm() {
             </p>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <div className="mx-6 mt-6 p-4 bg-red-50 border border-red-200 rounded-md">
+              <div className="flex">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <div className="ml-3">
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
             {/* Default Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Your Name *
+                  Your Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -347,7 +407,7 @@ export default function PublicForm() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address *
+                  Email Address <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
@@ -374,7 +434,7 @@ export default function PublicForm() {
             {/* Default Rating */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Overall Rating *
+                Overall Rating <span className="text-red-500">*</span>
               </label>
               <div className="flex items-center space-x-1">
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -401,7 +461,7 @@ export default function PublicForm() {
             {/* Default Testimonial Content */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Your Testimonial *
+                Your Testimonial <span className="text-red-500">*</span>
               </label>
               <textarea
                 required

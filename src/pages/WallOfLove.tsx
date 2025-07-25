@@ -69,7 +69,7 @@ export default function WallOfLove() {
                     <Star
                       key={i}
                       className={`h-5 w-5 ${
-                        i < parseFloat(testimonial.rating)
+                        i < parseFloat(testimonial.rating || '5')
                           ? 'text-yellow-400 fill-current'
                           : 'text-gray-300'
                       }`}

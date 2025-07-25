@@ -36,7 +36,7 @@ export default function Dashboard() {
       const pendingApproval = testimonials.filter(t => t.status === 'pending').length
       const approvedTestimonials = testimonials.filter(t => t.status === 'approved')
       const averageRating = approvedTestimonials.length > 0 
-        ? approvedTestimonials.reduce((sum, t) => sum + parseFloat(t.rating), 0) / approvedTestimonials.length
+        ? approvedTestimonials.reduce((sum, t) => sum + parseFloat(t.rating || '5'), 0) / approvedTestimonials.length
         : 0
 
       setStats({
@@ -215,7 +215,7 @@ export default function Dashboard() {
                               <Star
                                 key={i}
                                 className={`h-4 w-4 ${
-                                  i < parseFloat(testimonial.rating)
+                                  i < parseFloat(testimonial.rating || '5')
                                     ? 'text-yellow-400 fill-current'
                                     : 'text-gray-300'
                                 }`}

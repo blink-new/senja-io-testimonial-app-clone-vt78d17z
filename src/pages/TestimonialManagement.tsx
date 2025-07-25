@@ -124,7 +124,7 @@ export default function TestimonialManagement() {
                         <Star
                           key={i}
                           className={`h-4 w-4 ${
-                            i < parseFloat(testimonial.rating)
+                            i < parseFloat(testimonial.rating || '5')
                               ? 'text-yellow-400 fill-current'
                               : 'text-gray-300'
                           }`}
